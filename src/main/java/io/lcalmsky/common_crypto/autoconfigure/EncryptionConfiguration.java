@@ -11,6 +11,7 @@ import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.*;
 import org.springframework.core.annotation.AnnotationAttributes;
 import org.springframework.core.type.AnnotatedTypeMetadata;
+import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestTemplate;
@@ -30,7 +31,8 @@ import java.util.function.Function;
 
 @Configuration
 @ComponentScan({"io.lcalmsky.common_crypto"})
-public class EncryptionConfiguration {
+@Slf4j
+public class EncryptionConfiguration implements ImportAware {
 
     private static <T> T extractDataFromMetadata(AnnotatedTypeMetadata metadata, Function<AnnotationAttributes, T> annotationAttributesBooleanFunction, T defaultValue) {
         Map<String, Object> annotationAttributeMap = metadata.getAnnotationAttributes(EnableEncryption.class.getName());
@@ -41,7 +43,6 @@ public class EncryptionConfiguration {
     }
 
     @Bean
-    @Conditional(ClientCondition.class)
     public RestTemplate amlRestTemplate(@Value("${crypto.rsa.public-key}") String publicKey,
                                         @Value("${crypto.rsa.private-key}") String privateKey) {
         return new RestTemplateBuilder()
@@ -52,8 +53,8 @@ public class EncryptionConfiguration {
     }
 
     @Bean
-    @Conditional(FieldCondition.class)
     public Aes256Utils aes256Utils(@Value("${crypto.aes256.key}") String key) {
+        log.info("@@@ Aes256Utils registered as a bean");
         return new Aes256Utils(key);
     }
 
@@ -67,8 +68,14 @@ public class EncryptionConfiguration {
         return RsaUtils.getPrivateKeyFromBase64String(privateKey);
     }
 
+    @Override
+    public void setImportMetadata(AnnotationMetadata importMetadata) {
+        Map<String, Object> annotationAttributeMap = importMetadata.getAnnotationAttributes(EnableEncryption.class.getName());
+        AnnotationAttributes annotationAttributes = AnnotationAttributes.fromMap(annotationAttributeMap);
+        // TODO: 필요 여부 확인
+    }
+
     @Component
-    @Conditional(ServerCondition.class)
     @Slf4j
     @RequiredArgsConstructor
     public static class ServerEncryptionFilter implements Filter {
