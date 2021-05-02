@@ -6,17 +6,18 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.client.RestTemplateBuilder;
-import org.springframework.boot.web.servlet.FilterRegistrationBean;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.*;
-import org.springframework.core.annotation.AnnotationAttributes;
+import org.springframework.context.EnvironmentAware;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
-import org.springframework.core.type.AnnotatedTypeMetadata;
-import org.springframework.core.type.AnnotationMetadata;
+import org.springframework.http.converter.json.JsonbHttpMessageConverter;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestTemplate;
 
@@ -29,32 +30,28 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.security.PrivateKey;
 import java.security.PublicKey;
-import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 
 @Configuration
 @ComponentScan({"io.lcalmsky.common_crypto"})
 @Slf4j
-@RequiredArgsConstructor
-public class EncryptionConfiguration implements ImportAware, ApplicationContextAware {
+public class EncryptionConfiguration implements EnvironmentAware, BeanFactoryAware {
 
-    private final Environment environment;
-    private ApplicationContext applicationContext;
+    private Environment environment;
+    private ConfigurableListableBeanFactory beanFactory;
 
-    private static <T> T extractDataFromMetadata(AnnotatedTypeMetadata metadata, Function<AnnotationAttributes, T> annotationAttributesBooleanFunction, T defaultValue) {
-        Map<String, Object> annotationAttributeMap = metadata.getAnnotationAttributes(EnableEncryption.class.getName());
-        AnnotationAttributes annotationAttributes = AnnotationAttributes.fromMap(annotationAttributeMap);
-        return Optional.ofNullable(annotationAttributes)
-                .map(annotationAttributesBooleanFunction)
-                .orElse(defaultValue);
-    }
-
-    private RestTemplate amlRestTemplate(String publicKey, String privateKey) {
+    @Bean(name = "amlRestTemplate")
+    @ConditionalOnProperty(name = "crypto.uses-client", havingValue = "true")
+    public RestTemplate amlRestTemplate() {
+        String base64EncodedPublicKey = Optional.ofNullable(environment.getProperty("crypto.rsa.public-key"))
+                .orElseThrow(() -> new IllegalArgumentException("\"crypto.rsa.public-key\" with Base64 encoded value should be in application properties"));
+        String base64EncodedPrivateKey = Optional.ofNullable(environment.getProperty("crypto.rsa.private-key"))
+                .orElseThrow(() -> new IllegalArgumentException("\"crypto.rsa.private-key\" with Base64 encoded value should be in application properties"));
         return new RestTemplateBuilder()
-                .additionalMessageConverters(new RsaMessageConverter<>(
-                        publicKey(publicKey),
-                        privateKey(privateKey)))
+                .additionalMessageConverters(
+                        new MappingJackson2HttpMessageConverter(),
+                        new RsaMessageConverter<>(publicKey(base64EncodedPublicKey), privateKey(base64EncodedPrivateKey))
+                )
                 .build();
     }
 
@@ -66,43 +63,41 @@ public class EncryptionConfiguration implements ImportAware, ApplicationContextA
         return RsaUtils.getPrivateKeyFromBase64String(privateKey);
     }
 
-    @Override
-    public void setImportMetadata(AnnotationMetadata importMetadata) {
-        Map<String, Object> annotationAttributeMap = importMetadata.getAnnotationAttributes(EnableEncryption.class.getName());
-        AnnotationAttributes annotationAttributes = AnnotationAttributes.fromMap(annotationAttributeMap);
-        ConfigurableListableBeanFactory beanFactory = ((ConfigurableApplicationContext) applicationContext).getBeanFactory();
-        if (Optional.ofNullable(annotationAttributes).map(a -> a.getBoolean("usesClient")).orElse(false)) {
-            String publicKey = Optional.ofNullable(environment.getProperty("crypto.rsa.public-key"))
-                    .orElseThrow(() -> new IllegalStateException("\"crypto.rsa.public-key\" should be in application properties"));
-            String privateKey = Optional.ofNullable(environment.getProperty("crypto.rsa.private-key"))
-                    .orElseThrow(() -> new IllegalStateException("\"crypto.rsa.private-key\" should be in application properties"));
-            RestTemplate bean = amlRestTemplate(publicKey, privateKey);
-            beanFactory.registerSingleton("amlRestTemplate", bean);
-        }
-        log.info("@@@@@@ usesServer");
-        if (Optional.ofNullable(annotationAttributes).map(a -> a.getBoolean("usesServer")).orElse(false)) {
-            log.info("@@@@@@ start");
-            String publicKey = Optional.ofNullable(environment.getProperty("crypto.rsa.public-key"))
-                    .orElseThrow(() -> new IllegalStateException("\"crypto.rsa.public-key\" should be in application properties"));
-            String privateKey = Optional.ofNullable(environment.getProperty("crypto.rsa.private-key"))
-                    .orElseThrow(() -> new IllegalStateException("\"crypto.rsa.private-key\" should be in application properties"));
-            ServerEncryptionFilter serverEncryptionFilter = new ServerEncryptionFilter(publicKey(publicKey), privateKey(privateKey));
-//            FilterRegistrationBean<ServerEncryptionFilter> bean = filterRegistrationBean(serverEncryptionFilter);
-//            log.info("@@@@@ {}", bean.getClass().getCanonicalName());
-//            beanFactory.registerSingleton(bean.getClass().getCanonicalName(), bean);
-            beanFactory.registerSingleton(serverEncryptionFilter.getClass().getCanonicalName(), serverEncryptionFilter);
-        }
-    }
+//    @Override
+//    public void setImportMetadata(AnnotationMetadata importMetadata) {
+//        Map<String, Object> annotationAttributeMap = importMetadata.getAnnotationAttributes(EnableEncryption.class.getName());
+//        AnnotationAttributes annotationAttributes = AnnotationAttributes.fromMap(annotationAttributeMap);
+//        if (Optional.ofNullable(annotationAttributes).map(a -> a.getBoolean("usesClient")).orElse(false)) {
+//            String publicKey = Optional.ofNullable(environment.getProperty("crypto.rsa.public-key"))
+//                    .orElseThrow(() -> new IllegalStateException("\"crypto.rsa.public-key\" should be in application properties"));
+//            String privateKey = Optional.ofNullable(environment.getProperty("crypto.rsa.private-key"))
+//                    .orElseThrow(() -> new IllegalStateException("\"crypto.rsa.private-key\" should be in application properties"));
+//            RestTemplate bean = amlRestTemplate(publicKey, privateKey);
+//            beanFactory.registerSingleton("amlRestTemplate", bean);
+//        }
+//        log.info("@@@@@@ usesServer");
+//        if (Optional.ofNullable(annotationAttributes).map(a -> a.getBoolean("usesServer")).orElse(false)) {
+//            log.info("@@@@@@ start");
+//            String publicKey = Optional.ofNullable(environment.getProperty("crypto.rsa.public-key"))
+//                    .orElseThrow(() -> new IllegalStateException("\"crypto.rsa.public-key\" should be in application properties"));
+//            String privateKey = Optional.ofNullable(environment.getProperty("crypto.rsa.private-key"))
+//                    .orElseThrow(() -> new IllegalStateException("\"crypto.rsa.private-key\" should be in application properties"));
+//            ServerEncryptionFilter serverEncryptionFilter = new ServerEncryptionFilter(publicKey(publicKey), privateKey(privateKey));
+////            FilterRegistrationBean<ServerEncryptionFilter> bean = filterRegistrationBean(serverEncryptionFilter);
+////            log.info("@@@@@ {}", bean.getClass().getCanonicalName());
+////            beanFactory.registerSingleton(bean.getClass().getCanonicalName(), bean);
+//            beanFactory.registerSingleton(serverEncryptionFilter.getClass().getCanonicalName(), serverEncryptionFilter);
+//        }
+//    }
 
-    private FilterRegistrationBean<ServerEncryptionFilter> filterRegistrationBean(ServerEncryptionFilter serverEncryptionFilter) {
-        FilterRegistrationBean<ServerEncryptionFilter> filterRegistrationBean = new FilterRegistrationBean<>();
-        filterRegistrationBean.setFilter(serverEncryptionFilter);
-        return filterRegistrationBean;
+    @Override
+    public void setEnvironment(Environment environment) {
+        this.environment = environment;
     }
 
     @Override
-    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
-        this.applicationContext = applicationContext;
+    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+        this.beanFactory = (ConfigurableListableBeanFactory) beanFactory;
     }
 
     @Slf4j
@@ -245,29 +240,6 @@ public class EncryptionConfiguration implements ImportAware, ApplicationContextA
                 outputStream.flush();
                 outputStream.close();
             }
-        }
-    }
-
-    static class ClientCondition implements Condition {
-
-        @Override
-        public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
-            return extractDataFromMetadata(metadata, a -> a.getBoolean("usesClient"), false);
-        }
-    }
-
-    static class ServerCondition implements Condition {
-
-        @Override
-        public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
-            return extractDataFromMetadata(metadata, a -> a.getBoolean("usesServer"), false);
-        }
-    }
-
-    static class FieldCondition implements Condition {
-        @Override
-        public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
-            return extractDataFromMetadata(metadata, a -> a.getBoolean("usesFieldEncryptionConverter"), false);
         }
     }
 }
