@@ -45,12 +45,12 @@ public @interface EnableEncryption {
      */
     Algorithm serverAlgorithm() default Algorithm.RSA;
 
-    /**
-     * Decide whether to register utility class bean to use converter to use for field encryption.
-     *
-     * @return true if uses {@link io.lcalmsky.common_crypto.util.Aes256Utils} bean
-     */
-    boolean usesFieldEncryptionConverter() default false;
+//    /**
+//     * Decide whether to register utility class bean to use converter to use for field encryption.
+//     *
+//     * @return true if uses {@link io.lcalmsky.common_crypto.util.Aes256Utils} bean
+//     */
+//    boolean usesFieldEncryptionConverter() default false;
 
     enum Algorithm {
         RSA
