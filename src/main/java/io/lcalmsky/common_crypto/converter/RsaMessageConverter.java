@@ -1,21 +1,25 @@
 package io.lcalmsky.common_crypto.converter;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.lcalmsky.common_crypto.util.RsaUtils;
 import org.springframework.http.HttpInputMessage;
 import org.springframework.http.HttpOutputMessage;
-import org.springframework.http.converter.AbstractHttpMessageConverter;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.converter.HttpMessageNotWritableException;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.util.Collections;
+import java.util.Map;
 
-public class RsaMessageConverter<T> extends AbstractHttpMessageConverter<T> {
+public class RsaMessageConverter extends MappingJackson2HttpMessageConverter {
 
     private final PrivateKey privateKey;
     private final PublicKey publicKey;
@@ -33,19 +37,22 @@ public class RsaMessageConverter<T> extends AbstractHttpMessageConverter<T> {
     }
 
     @Override
-    protected T readInternal(Class<? extends T> clazz, HttpInputMessage inputMessage) throws IOException, HttpMessageNotReadableException {
+    protected Object readInternal(Class<?> clazz, HttpInputMessage inputMessage) throws IOException, HttpMessageNotReadableException {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         byte[] buffer = new byte[1024];
         InputStream inputStream = inputMessage.getBody();
         for (int length; (length = inputStream.read(buffer)) != -1; ) outputStream.write(buffer, 0, length);
         String encryptedText = outputStream.toString("UTF-8");
-        return objectMapper.readValue(RsaUtils.decrypt(encryptedText, privateKey), clazz);
+        Map<String, String> responseMap = objectMapper.readValue(RsaUtils.decrypt(encryptedText, privateKey), new TypeReference<Map<String, String>>() {
+        });
+        return objectMapper.readValue(RsaUtils.decrypt(responseMap.get("encrypted"), privateKey), clazz);
     }
 
     @Override
-    protected void writeInternal(T t, HttpOutputMessage outputMessage) throws IOException, HttpMessageNotWritableException {
-        String content = objectMapper.writeValueAsString(t);
+    protected void writeInternal(Object object, Type type, HttpOutputMessage outputMessage) throws IOException, HttpMessageNotWritableException {
+        String content = objectMapper.writeValueAsString(object);
         String encryptedText = RsaUtils.encrypt(content, publicKey);
-        outputMessage.getBody().write(encryptedText.getBytes(StandardCharsets.UTF_8));
+        Map<String, String> encrypted = Collections.singletonMap("encrypted", encryptedText);
+        outputMessage.getBody().write(objectMapper.writeValueAsString(encrypted).getBytes(StandardCharsets.UTF_8));
     }
 }

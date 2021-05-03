@@ -1,14 +1,16 @@
 package io.lcalmsky.common_crypto.autoconfigure;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.lcalmsky.common_crypto.converter.RsaMessageConverter;
+import io.lcalmsky.common_crypto.exception.EncryptionException;
+import io.lcalmsky.common_crypto.exception.NoEncryptionException;
 import io.lcalmsky.common_crypto.util.RsaUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.BeanFactory;
-import org.springframework.beans.factory.BeanFactoryAware;
-import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.EnvironmentAware;
@@ -16,10 +18,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
-import org.springframework.http.converter.json.JsonbHttpMessageConverter;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.filter.OncePerRequestFilter;
 
 import javax.servlet.*;
 import javax.servlet.http.HttpServletRequest;
@@ -30,15 +32,16 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.util.Collections;
+import java.util.Map;
 import java.util.Optional;
 
 @Configuration
 @ComponentScan({"io.lcalmsky.common_crypto"})
 @Slf4j
-public class EncryptionConfiguration implements EnvironmentAware, BeanFactoryAware {
+public class EncryptionConfiguration implements EnvironmentAware {
 
     private Environment environment;
-    private ConfigurableListableBeanFactory beanFactory;
 
     @Bean(name = "amlRestTemplate")
     @ConditionalOnProperty(name = "crypto.uses-client", havingValue = "true")
@@ -48,82 +51,68 @@ public class EncryptionConfiguration implements EnvironmentAware, BeanFactoryAwa
         String base64EncodedPrivateKey = Optional.ofNullable(environment.getProperty("crypto.rsa.private-key"))
                 .orElseThrow(() -> new IllegalArgumentException("\"crypto.rsa.private-key\" with Base64 encoded value should be in application properties"));
         return new RestTemplateBuilder()
-                .additionalMessageConverters(
-                        new MappingJackson2HttpMessageConverter(),
-                        new RsaMessageConverter<>(publicKey(base64EncodedPublicKey), privateKey(base64EncodedPrivateKey))
-                )
+                .additionalMessageConverters(new RsaMessageConverter(publicKey(base64EncodedPublicKey), privateKey(base64EncodedPrivateKey)))
                 .build();
     }
 
-    private PublicKey publicKey(String publicKey) {
-        return RsaUtils.getPublicKeyFromBase64String(publicKey);
+    @Bean
+    @ConditionalOnProperty(prefix = "crypto.rsa", name = {"public-key", "private-key", "uses-client", "uses-server"}, matchIfMissing = true)
+    public PublicKey publicKey(@Value("${crypto.rsa.public-key}") String base64EncodedPublicKey) {
+        return RsaUtils.getPublicKeyFromBase64String(base64EncodedPublicKey);
     }
 
-    private PrivateKey privateKey(String privateKey) {
-        return RsaUtils.getPrivateKeyFromBase64String(privateKey);
+    @Bean
+    @ConditionalOnProperty(prefix = "crypto.rsa", name = {"public-key", "private-key", "uses-client", "uses-server"}, matchIfMissing = true)
+    public PrivateKey privateKey(@Value("${crypto.rsa.private-key}") String base64EncodedPrivateKey) {
+        return RsaUtils.getPrivateKeyFromBase64String(base64EncodedPrivateKey);
     }
-
-//    @Override
-//    public void setImportMetadata(AnnotationMetadata importMetadata) {
-//        Map<String, Object> annotationAttributeMap = importMetadata.getAnnotationAttributes(EnableEncryption.class.getName());
-//        AnnotationAttributes annotationAttributes = AnnotationAttributes.fromMap(annotationAttributeMap);
-//        if (Optional.ofNullable(annotationAttributes).map(a -> a.getBoolean("usesClient")).orElse(false)) {
-//            String publicKey = Optional.ofNullable(environment.getProperty("crypto.rsa.public-key"))
-//                    .orElseThrow(() -> new IllegalStateException("\"crypto.rsa.public-key\" should be in application properties"));
-//            String privateKey = Optional.ofNullable(environment.getProperty("crypto.rsa.private-key"))
-//                    .orElseThrow(() -> new IllegalStateException("\"crypto.rsa.private-key\" should be in application properties"));
-//            RestTemplate bean = amlRestTemplate(publicKey, privateKey);
-//            beanFactory.registerSingleton("amlRestTemplate", bean);
-//        }
-//        log.info("@@@@@@ usesServer");
-//        if (Optional.ofNullable(annotationAttributes).map(a -> a.getBoolean("usesServer")).orElse(false)) {
-//            log.info("@@@@@@ start");
-//            String publicKey = Optional.ofNullable(environment.getProperty("crypto.rsa.public-key"))
-//                    .orElseThrow(() -> new IllegalStateException("\"crypto.rsa.public-key\" should be in application properties"));
-//            String privateKey = Optional.ofNullable(environment.getProperty("crypto.rsa.private-key"))
-//                    .orElseThrow(() -> new IllegalStateException("\"crypto.rsa.private-key\" should be in application properties"));
-//            ServerEncryptionFilter serverEncryptionFilter = new ServerEncryptionFilter(publicKey(publicKey), privateKey(privateKey));
-////            FilterRegistrationBean<ServerEncryptionFilter> bean = filterRegistrationBean(serverEncryptionFilter);
-////            log.info("@@@@@ {}", bean.getClass().getCanonicalName());
-////            beanFactory.registerSingleton(bean.getClass().getCanonicalName(), bean);
-//            beanFactory.registerSingleton(serverEncryptionFilter.getClass().getCanonicalName(), serverEncryptionFilter);
-//        }
-//    }
 
     @Override
     public void setEnvironment(Environment environment) {
         this.environment = environment;
     }
 
-    @Override
-    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
-        this.beanFactory = (ConfigurableListableBeanFactory) beanFactory;
-    }
-
     @Slf4j
     @RequiredArgsConstructor
+    @Component
+    @ConditionalOnProperty(name = "crypto.uses-server", havingValue = "true")
     public static class ServerEncryptionFilter implements Filter {
         private final PublicKey publicKey;
         private final PrivateKey privateKey;
+        private final ObjectMapper objectMapper = new ObjectMapper();
 
         @Override
         public void init(FilterConfig filterConfig) {
-            log.info("add server encryption filter from @EnableRsaEncryption");
+            log.info("add encryption filter from @EnableRsaEncryption");
         }
 
         @SneakyThrows
         @Override
         public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) {
-            BufferedRequestWrapper bufferedRequest = (BufferedRequestWrapper) request;
-            bufferedRequest.setRequestBody(RsaUtils.decrypt(bufferedRequest.getRequestBody(), privateKey));
+            BufferedRequestWrapper bufferedRequest = new BufferedRequestWrapper((HttpServletRequest) request);
+            if (bufferedRequest.getRequestBody().length() != 0) setRequest(bufferedRequest);
             chain.doFilter(bufferedRequest, response);
-            BufferedResponseWrapper bufferedResponse = new BufferedResponseWrapper((HttpServletResponse) response);
+            setResponse((HttpServletResponse) response);
+        }
+
+        private void setRequest(BufferedRequestWrapper bufferedRequest) throws JsonProcessingException {
+            Map<String, String> map = objectMapper.readValue(bufferedRequest.getRequestBody(), new TypeReference<Map<String, String>>() {
+            });
+            log.info("@@@@@ request map: {}", map);
+            log.info("@@@@@ decrypted: {}", RsaUtils.decrypt(Optional.ofNullable(map.get("encrypted"))
+                    .orElseThrow(NoEncryptionException::thrown), privateKey));
+            bufferedRequest.setRequestBody(RsaUtils.decrypt(Optional.ofNullable(map.get("encrypted"))
+                    .orElseThrow(NoEncryptionException::thrown), privateKey));
+        }
+
+        private void setResponse(HttpServletResponse response) {
+            BufferedResponseWrapper bufferedResponse = new BufferedResponseWrapper(response);
             bufferedResponse.encryptThenWrite(publicKey);
         }
 
         @Override
         public void destroy() {
-            log.info("remove server encryption filter");
+            log.info("remove encryption filter");
         }
 
         public static class BufferedRequestWrapper extends HttpServletRequestWrapper implements Serializable {
@@ -188,6 +177,7 @@ public class EncryptionConfiguration implements EnvironmentAware, BeanFactoryAwa
 
             private final ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             private final PrintWriter writer = new PrintWriter(outputStream);
+            private final ObjectMapper objectMapper = new ObjectMapper();
 
             public BufferedResponseWrapper(HttpServletResponse response) {
                 super(response);
@@ -235,10 +225,29 @@ public class EncryptionConfiguration implements EnvironmentAware, BeanFactoryAwa
 
             @SneakyThrows
             public void encryptThenWrite(PublicKey publicKey) {
+                log.info("@@@@@ response data: {}", getResponseData());
+                Map<String, String> encrypted = Collections.singletonMap("encrypted", getResponseData());
+                String encryptedText = objectMapper.writeValueAsString(encrypted);
                 ServletOutputStream outputStream = getOutputStream();
-                outputStream.write(RsaUtils.encrypt(getResponseData(), publicKey).getBytes(StandardCharsets.UTF_8));
+                outputStream.write(RsaUtils.encrypt(encryptedText, publicKey).getBytes(StandardCharsets.UTF_8));
                 outputStream.flush();
                 outputStream.close();
+            }
+        }
+    }
+
+    @Component
+    @ConditionalOnProperty(name = "crypto.uses-server", havingValue = "true")
+    public static class ExceptionHandlerFilter extends OncePerRequestFilter {
+        private final ObjectMapper objectMapper = new ObjectMapper();
+
+        @Override
+        protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws IOException, ServletException {
+            try {
+                filterChain.doFilter(request, response);
+            } catch (EncryptionException e) {
+                response.setStatus(e.getStatusCode().value());
+                response.getWriter().write(objectMapper.writeValueAsString(Collections.singletonMap("reason", e.getMessage())));
             }
         }
     }

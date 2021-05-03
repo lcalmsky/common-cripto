@@ -1,5 +1,7 @@
 package io.lcalmsky.common_crypto.util;
 
+import io.lcalmsky.common_crypto.exception.InvalidEncryptionException;
+
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
@@ -22,7 +24,7 @@ public class RsaUtils {
         try {
             gen = KeyPairGenerator.getInstance(algorithm);
         } catch (NoSuchAlgorithmException e) {
-            throw new IllegalArgumentException("no such algorithm: " + algorithm, e);
+            throw InvalidEncryptionException.thrown("no such algorithm: " + algorithm);
         }
         gen.initialize(1024, SECURE_RANDOM);
         return gen.genKeyPair();
@@ -47,7 +49,7 @@ public class RsaUtils {
         try {
             return keyFactory.generatePrivate(keySpecPKCS8);
         } catch (InvalidKeySpecException e) {
-            throw new IllegalArgumentException("invalid key: " + key, e);
+            throw InvalidEncryptionException.thrown("invalid key: " + key);
         }
     }
 
@@ -58,7 +60,7 @@ public class RsaUtils {
         try {
             return keyFactory.generatePublic(keySpecX509);
         } catch (InvalidKeySpecException e) {
-            throw new IllegalArgumentException("invalid key: " + key, e);
+            throw InvalidEncryptionException.thrown("invalid key: " + key);
         }
     }
 
@@ -66,7 +68,7 @@ public class RsaUtils {
         try {
             return KeyFactory.getInstance("RSA");
         } catch (NoSuchAlgorithmException e) {
-            throw new IllegalArgumentException("no such algorithm: RSA", e);
+            throw InvalidEncryptionException.thrown("no such algorithm: RSA");
         }
     }
 
@@ -75,9 +77,9 @@ public class RsaUtils {
         try {
             cipher = Cipher.getInstance("RSA");
         } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("no such algorithm found: " + "RSA", e);
+            throw InvalidEncryptionException.thrown("no such algorithm found: " + "RSA");
         } catch (NoSuchPaddingException e) {
-            throw new IllegalStateException("no such padding found: " + "RSA", e);
+            throw InvalidEncryptionException.thrown("no such padding found: " + "RSA");
         }
         return cipher;
     }
@@ -87,9 +89,9 @@ public class RsaUtils {
             if (ivParamSpec != null && ivParamSpec.length > 0) cipher.init(cipherMode, key, ivParamSpec[0]);
             else cipher.init(cipherMode, key);
         } catch (InvalidKeyException e) {
-            throw new IllegalArgumentException("invalid key: " + key);
+            throw InvalidEncryptionException.thrown("invalid key: " + key);
         } catch (InvalidAlgorithmParameterException e) {
-            throw new IllegalArgumentException("invalid algorithm parameter: " + Arrays.toString(ivParamSpec));
+            throw InvalidEncryptionException.thrown("invalid algorithm parameter: " + Arrays.toString(ivParamSpec));
         }
     }
 
@@ -98,9 +100,9 @@ public class RsaUtils {
         try {
             encrypted = cipher.doFinal(bytes);
         } catch (IllegalBlockSizeException e) {
-            throw new IllegalStateException("illegal block size");
+            throw InvalidEncryptionException.thrown("illegal block size");
         } catch (BadPaddingException e) {
-            throw new IllegalStateException("bad padding");
+            throw InvalidEncryptionException.thrown("bad padding");
         }
         return encrypted;
     }
