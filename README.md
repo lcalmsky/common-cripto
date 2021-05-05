@@ -107,17 +107,14 @@ public class FooService {
     private final RestTemplate encryptedRestTemplate;
 
     public void insertStudent(Student student) {
-        HttpHeaders httpHeaders = new HttpHeaders();
-        httpHeaders.setContentType(MediaType.APPLICATION_JSON);
-        httpHeaders.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
         encryptedRestTemplate.getMessageConverters().forEach(c -> log.info("{}", c));
-        HttpEntity<String> httpEntity = new HttpEntity<>("{\n" +
-                "  \"name\": \"홍길동\",\n" +
-                "  \"age\": 20,\n" +
-                "  \"phoneNumber\": \"01012345678\"\n" +
-                "}",
-                httpHeaders);
-        encryptedRestTemplate.exchange("http://localhost:8080/student", HttpMethod.POST, httpEntity, Void.class);
+        Student student = new Student();
+        student.setName("홍길동");
+        student.setPhoneNumber("01012341234");
+        student.setAge(20);
+        encryptedRestTemplate.exchange("http://localhost:8080/student", HttpMethod.POST, new HttpEntity<>(student), Void.class);
+
+        ResponseEntity<List<?>> responseEntity = encryptedRestTemplate.exchange("http://localhost:8080/students", HttpMethod.GET, new HttpEntity<>(null), ParameterizedTypeReference.forType(List.class));
     }
 }
 ```
