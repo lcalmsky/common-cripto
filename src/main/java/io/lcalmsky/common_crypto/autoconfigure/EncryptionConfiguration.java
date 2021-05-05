@@ -10,20 +10,18 @@ import io.lcalmsky.common_crypto.util.RsaUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.BeanFactory;
-import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.client.RestTemplateBuilder;
-import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.EnvironmentAware;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.ImportAware;
-import org.springframework.core.annotation.AnnotationAttributes;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
 import org.springframework.core.type.AnnotationMetadata;
+import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -44,51 +42,20 @@ import java.util.Optional;
 @Configuration
 @ComponentScan({"io.lcalmsky.common_crypto"})
 @Slf4j
-public class EncryptionConfiguration implements EnvironmentAware, BeanFactoryAware, ImportAware {
+public class EncryptionConfiguration implements EnvironmentAware {
     static int CNT = 0;
 
     private Environment environment;
-    private ConfigurableListableBeanFactory beanFactory;
 
     @Override
     public void setEnvironment(Environment environment) {
-        log.info("@@@@@ {} {}", CNT++, Thread.currentThread().getStackTrace()[1]);
         this.environment = environment;
     }
 
-    @Override
-    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
-        this.beanFactory = (ConfigurableListableBeanFactory) beanFactory;
-    }
-
-    @Override
-    public void setImportMetadata(AnnotationMetadata importMetadata) {
-        log.info("@@@@@ {} {}", CNT++, Thread.currentThread().getStackTrace()[1]);
-        Map<String, Object> map = importMetadata.getAnnotationAttributes(EnableEncryption.class.getName());
-        AnnotationAttributes annotationAttributes = AnnotationAttributes.fromMap(map);
-        if (Optional.ofNullable(annotationAttributes)
-                .map(a -> a.getBoolean("usesClient"))
-                .orElse(false)) {
-            RestTemplate amlRestTemplate = amlRestTemplate();
-            beanFactory.registerSingleton("amlRestTemplate", amlRestTemplate);
-        }
-        if (Optional.ofNullable(annotationAttributes)
-                .map(a -> a.getBoolean("usesServer"))
-                .orElse(false)) {
-            log.info("@@@@@ usesServer = true");
-            String base64EncodedPublicKey = Optional.ofNullable(environment.getProperty("crypto.rsa.public-key"))
-                    .orElseThrow(() -> new IllegalArgumentException("\"crypto.rsa.public-key\" with Base64 encoded value should be in application properties"));
-            String base64EncodedPrivateKey = Optional.ofNullable(environment.getProperty("crypto.rsa.private-key"))
-                    .orElseThrow(() -> new IllegalArgumentException("\"crypto.rsa.private-key\" with Base64 encoded value should be in application properties"));
-            FilterRegistrationBean<ServerEncryptionFilter> filterRegistrationBean = filterRegistrationBean(base64EncodedPublicKey, base64EncodedPrivateKey);
-            beanFactory.registerSingleton(filterRegistrationBean.getClass().getName(), filterRegistrationBean);
-            ExceptionHandlerFilter exceptionHandlerFilter = new ExceptionHandlerFilter();
-            beanFactory.registerSingleton(exceptionHandlerFilter.getClass().getName(), exceptionHandlerFilter);
-        }
-    }
-
-    private RestTemplate amlRestTemplate() {
-        log.info("@@@@@ {} {}", CNT++, Thread.currentThread().getStackTrace()[1]);
+    @Bean(name = "encryptedRestTemplate")
+    @ConditionalOnProperty(name = "crypto.uses-client", havingValue = "true")
+    @Order(9)
+    public RestTemplate encryptedRestTemplate() {
         String base64EncodedPublicKey = Optional.ofNullable(environment.getProperty("crypto.rsa.public-key"))
                 .orElseThrow(() -> new IllegalArgumentException("\"crypto.rsa.public-key\" with Base64 encoded value should be in application properties"));
         String base64EncodedPrivateKey = Optional.ofNullable(environment.getProperty("crypto.rsa.private-key"))
@@ -98,25 +65,22 @@ public class EncryptionConfiguration implements EnvironmentAware, BeanFactoryAwa
                 .build();
     }
 
+    @Bean
+    @ConditionalOnProperty(prefix = "crypto.rsa", name = {"public-key", "private-key", "uses-client", "uses-server"}, matchIfMissing = true)
     public PublicKey publicKey(@Value("${crypto.rsa.public-key}") String base64EncodedPublicKey) {
-        log.info("@@@@@ {} {}", CNT++, Thread.currentThread().getStackTrace()[1]);
         return RsaUtils.getPublicKeyFromBase64String(base64EncodedPublicKey);
     }
 
+    @Bean
+    @ConditionalOnProperty(prefix = "crypto.rsa", name = {"public-key", "private-key", "uses-client", "uses-server"}, matchIfMissing = true)
     public PrivateKey privateKey(@Value("${crypto.rsa.private-key}") String base64EncodedPrivateKey) {
-        log.info("@@@@@ {} {}", CNT++, Thread.currentThread().getStackTrace()[1]);
         return RsaUtils.getPrivateKeyFromBase64String(base64EncodedPrivateKey);
-    }
-
-    private FilterRegistrationBean<ServerEncryptionFilter> filterRegistrationBean(String base64EncodedPublicKey, String base64EncodedPrivateKey) {
-        log.info("@@@@@ {} {}", CNT++, Thread.currentThread().getStackTrace()[1]);
-        FilterRegistrationBean<ServerEncryptionFilter> filterRegistrationBean = new FilterRegistrationBean<>();
-        filterRegistrationBean.setFilter(new ServerEncryptionFilter(publicKey(base64EncodedPublicKey), privateKey(base64EncodedPrivateKey)));
-        return filterRegistrationBean;
     }
 
     @Slf4j
     @RequiredArgsConstructor
+    @Component
+    @ConditionalOnProperty(name = "crypto.uses-server", havingValue = "true")
     public static class ServerEncryptionFilter implements Filter {
         private final PublicKey publicKey;
         private final PrivateKey privateKey;
@@ -279,6 +243,8 @@ public class EncryptionConfiguration implements EnvironmentAware, BeanFactoryAwa
         }
     }
 
+    @Component
+    @ConditionalOnProperty(name = "crypto.uses-server", havingValue = "true")
     public static class ExceptionHandlerFilter extends OncePerRequestFilter {
         private final ObjectMapper objectMapper = new ObjectMapper();
 

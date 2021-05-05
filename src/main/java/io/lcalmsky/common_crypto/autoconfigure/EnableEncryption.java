@@ -16,25 +16,29 @@ import java.lang.annotation.*;
 public @interface EnableEncryption {
 
     /**
-     * client encrypts request body and then decrypts response body
+     * client encrypts request body and then decrypts response body<br>
+     * uses properties(crypto.uses-client=true) instead of this.
      *
      * @return true if uses this function
      */
+    @Deprecated
     boolean usesClient() default false;
 
     /**
      * set algorithm to be used for encryption on the client. <br>
-     * Currently, only RSA is provided.
+     * Currently, only RSA is provided. <br>
      *
      * @return Algorithm to be used for encryption on the client
      */
     Algorithm clientAlgorithm() default Algorithm.RSA;
 
     /**
-     * server decrypts request body and then encrypts response body
+     * server decrypts request body and then encrypts response body <br>
+     * uses properties(crypto.uses-server=true) instead of this.
      *
      * @return true if uses this function
      */
+    @Deprecated
     boolean usesServer() default false;
 
     /**
@@ -44,13 +48,6 @@ public @interface EnableEncryption {
      * @return Algorithm to be used for encryption on the server
      */
     Algorithm serverAlgorithm() default Algorithm.RSA;
-
-//    /**
-//     * Decide whether to register utility class bean to use converter to use for field encryption.
-//     *
-//     * @return true if uses {@link io.lcalmsky.common_crypto.util.Aes256Utils} bean
-//     */
-//    boolean usesFieldEncryptionConverter() default false;
 
     enum Algorithm {
         RSA
