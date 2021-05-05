@@ -2,12 +2,13 @@ package io.lcalmsky.common_crypto.autoconfigure;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import io.lcalmsky.common_crypto.converter.RsaMessageConverter;
 import io.lcalmsky.common_crypto.exception.EncryptionException;
 import io.lcalmsky.common_crypto.exception.NoEncryptionException;
 import io.lcalmsky.common_crypto.util.RsaUtils;
-import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import javax.servlet.*;
 import javax.servlet.http.HttpServletRequest;
@@ -40,8 +42,7 @@ import java.util.Optional;
 @Configuration
 @ComponentScan({"io.lcalmsky.common_crypto"})
 @Slf4j
-public class EncryptionConfiguration implements EnvironmentAware {
-    static int CNT = 0;
+public class EncryptionConfiguration implements EnvironmentAware, WebMvcConfigurer {
 
     private Environment environment;
 
@@ -76,13 +77,20 @@ public class EncryptionConfiguration implements EnvironmentAware {
     }
 
     @Slf4j
-    @RequiredArgsConstructor
     @Component
     @ConditionalOnProperty(name = "crypto.uses-server", havingValue = "true")
     public static class ServerEncryptionFilter implements Filter {
         private final PublicKey publicKey;
         private final PrivateKey privateKey;
-        private final ObjectMapper objectMapper = new ObjectMapper();
+        private final ObjectMapper objectMapper;
+
+        public ServerEncryptionFilter(PublicKey publicKey, PrivateKey privateKey) {
+            this.publicKey = publicKey;
+            this.privateKey = privateKey;
+            objectMapper = new ObjectMapper();
+            objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+            objectMapper.enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT);
+        }
 
         @Override
         public void init(FilterConfig filterConfig) {
@@ -117,7 +125,7 @@ public class EncryptionConfiguration implements EnvironmentAware {
 
         public static class BufferedRequestWrapper extends HttpServletRequestWrapper implements Serializable {
             private static final long serialVersionUID = -2420421613561723478L;
-            private final byte[] bytes;
+            private byte[] bytes;
             private String requestBody;
 
             public BufferedRequestWrapper(HttpServletRequest request) throws IOException {
@@ -138,6 +146,7 @@ public class EncryptionConfiguration implements EnvironmentAware {
 
             public void setRequestBody(String requestBody) {
                 this.requestBody = requestBody;
+                this.bytes = requestBody.getBytes(StandardCharsets.UTF_8);
             }
 
             static class ServletInStream extends ServletInputStream {

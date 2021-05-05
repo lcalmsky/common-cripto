@@ -1,8 +1,11 @@
 package io.lcalmsky.common_crypto.converter;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import io.lcalmsky.common_crypto.util.RsaUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpInputMessage;
 import org.springframework.http.HttpOutputMessage;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -19,6 +22,7 @@ import java.security.PublicKey;
 import java.util.Collections;
 import java.util.Map;
 
+@Slf4j
 public class RsaMessageConverter extends MappingJackson2HttpMessageConverter {
 
     private final PrivateKey privateKey;
@@ -29,6 +33,8 @@ public class RsaMessageConverter extends MappingJackson2HttpMessageConverter {
         this.publicKey = publicKey;
         this.privateKey = privateKey;
         objectMapper = new ObjectMapper();
+        objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+        objectMapper.enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT);
     }
 
     @Override
