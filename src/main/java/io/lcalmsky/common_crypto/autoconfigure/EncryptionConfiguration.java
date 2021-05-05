@@ -17,10 +17,8 @@ import org.springframework.context.EnvironmentAware;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.ImportAware;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
-import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestTemplate;
@@ -88,7 +86,6 @@ public class EncryptionConfiguration implements EnvironmentAware {
 
         @Override
         public void init(FilterConfig filterConfig) {
-            log.info("@@@@@ {} {}", CNT++, Thread.currentThread().getStackTrace()[1]);
             log.info("add encryption filter from @EnableRsaEncryption");
         }
 
@@ -104,9 +101,6 @@ public class EncryptionConfiguration implements EnvironmentAware {
         private void setRequest(BufferedRequestWrapper bufferedRequest) throws JsonProcessingException {
             Map<String, String> map = objectMapper.readValue(bufferedRequest.getRequestBody(), new TypeReference<Map<String, String>>() {
             });
-            log.info("@@@@@ request map: {}", map);
-            log.info("@@@@@ decrypted: {}", RsaUtils.decrypt(Optional.ofNullable(map.get("encrypted"))
-                    .orElseThrow(NoEncryptionException::thrown), privateKey));
             bufferedRequest.setRequestBody(RsaUtils.decrypt(Optional.ofNullable(map.get("encrypted"))
                     .orElseThrow(NoEncryptionException::thrown), privateKey));
         }
@@ -128,7 +122,6 @@ public class EncryptionConfiguration implements EnvironmentAware {
 
             public BufferedRequestWrapper(HttpServletRequest request) throws IOException {
                 super(request);
-                log.info("@@@@@ {} {}", CNT++, Thread.currentThread().getStackTrace()[1]);
                 InputStream in = super.getInputStream();
                 bytes = StreamUtils.copyToByteArray(in);
                 requestBody = new String(bytes, StandardCharsets.UTF_8);
@@ -232,7 +225,6 @@ public class EncryptionConfiguration implements EnvironmentAware {
 
             @SneakyThrows
             public void encryptThenWrite(PublicKey publicKey) {
-                log.info("@@@@@ response data: {}", getResponseData());
                 Map<String, String> encrypted = Collections.singletonMap("encrypted", getResponseData());
                 String encryptedText = objectMapper.writeValueAsString(encrypted);
                 ServletOutputStream outputStream = getOutputStream();
@@ -247,10 +239,6 @@ public class EncryptionConfiguration implements EnvironmentAware {
     @ConditionalOnProperty(name = "crypto.uses-server", havingValue = "true")
     public static class ExceptionHandlerFilter extends OncePerRequestFilter {
         private final ObjectMapper objectMapper = new ObjectMapper();
-
-        public ExceptionHandlerFilter() {
-            log.info("@@@@@ {} {}", CNT++, Thread.currentThread().getStackTrace()[1]);
-        }
 
         @Override
         protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws IOException, ServletException {
