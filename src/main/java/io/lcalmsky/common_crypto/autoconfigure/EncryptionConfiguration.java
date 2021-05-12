@@ -55,7 +55,6 @@ public class EncryptionConfiguration implements EnvironmentAware, WebMvcConfigur
 
     @Bean(name = "encryptedRestTemplate")
     @ConditionalOnProperty(name = "crypto.uses-client", havingValue = "true")
-    @Order(9)
     public RestTemplate encryptedRestTemplate() {
         String base64EncodedPublicKey = Optional.ofNullable(environment.getProperty("crypto.rsa.public-key"))
                 .orElseThrow(() -> new IllegalArgumentException("\"crypto.rsa.public-key\" with Base64 encoded value should be in application properties"));
