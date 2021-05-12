@@ -1,3 +1,8 @@
+![Bintray](https://img.shields.io/badge/library-0.0.1--SNAPSHOT-red)
+![Bintray](https://img.shields.io/badge/java-1.8-orange)
+![Bintray](https://img.shields.io/badge/spring--boot-2.4.5-yellowgreen)
+![Bintray](https://img.shields.io/badge/junit-5-blue)
+
 ## Overview
 
 애너테이션과 설정을 이용해 서버/클라이언트 전문 암호화 기능을 제공합니다.
