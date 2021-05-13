@@ -126,7 +126,7 @@ public class FooService {
 
 ### Precautions
 
-- annotation attribute를 이용한 암호화 활성화 기능은 현재 지원하지 않습니다.
+* annotation attribute를 이용한 암호화 활성화 기능은 현재 지원하지 않습니다.
 
 ### Future Works
 

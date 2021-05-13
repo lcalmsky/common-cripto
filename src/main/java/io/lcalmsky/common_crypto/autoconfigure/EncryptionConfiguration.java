@@ -67,6 +67,12 @@ public class EncryptionConfiguration implements EnvironmentAware, WebMvcConfigur
                 .build();
     }
 
+    @Bean(name = "encryptedRestTemplate")
+    @ConditionalOnProperty(name = "crypto.uses-client", havingValue = "false")
+    public RestTemplate mockRestTemplate() {
+        return new RestTemplate();
+    }
+
     @Bean
     @ConditionalOnProperty(prefix = "crypto.rsa", name = {"public-key", "private-key", "uses-client", "uses-server"}, matchIfMissing = true)
     public PublicKey publicKey(@Value("${crypto.rsa.public-key}") String base64EncodedPublicKey) {
