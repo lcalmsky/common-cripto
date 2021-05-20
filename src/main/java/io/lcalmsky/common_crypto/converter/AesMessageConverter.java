@@ -23,13 +23,13 @@ import java.util.Collections;
 import java.util.Map;
 
 @Slf4j
-public class RsaMessageConverter extends MappingJackson2HttpMessageConverter {
+public class AesMessageConverter extends MappingJackson2HttpMessageConverter {
 
     private final PrivateKey privateKey;
     private final PublicKey publicKey;
     private final ObjectMapper objectMapper;
 
-    public RsaMessageConverter(PublicKey publicKey, PrivateKey privateKey) {
+    public AesMessageConverter(PublicKey publicKey, PrivateKey privateKey) {
         this.publicKey = publicKey;
         this.privateKey = privateKey;
         objectMapper = new ObjectMapper();

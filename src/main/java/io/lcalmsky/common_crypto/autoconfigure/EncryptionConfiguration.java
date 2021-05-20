@@ -5,7 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import io.lcalmsky.common_crypto.converter.RsaMessageConverter;
+import io.lcalmsky.common_crypto.converter.AesMessageConverter;
 import io.lcalmsky.common_crypto.exception.EncryptionException;
 import io.lcalmsky.common_crypto.exception.NoEncryptionException;
 import io.lcalmsky.common_crypto.util.RsaUtils;
@@ -18,7 +18,6 @@ import org.springframework.context.EnvironmentAware;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -56,12 +55,12 @@ public class EncryptionConfiguration implements EnvironmentAware, WebMvcConfigur
     @Bean(name = "encryptedRestTemplate")
     @ConditionalOnProperty(name = "crypto.uses-client", havingValue = "true")
     public RestTemplate encryptedRestTemplate() {
-        String base64EncodedPublicKey = Optional.ofNullable(environment.getProperty("crypto.rsa.public-key"))
-                .orElseThrow(() -> new IllegalArgumentException("\"crypto.rsa.public-key\" with Base64 encoded value should be in application properties"));
-        String base64EncodedPrivateKey = Optional.ofNullable(environment.getProperty("crypto.rsa.private-key"))
-                .orElseThrow(() -> new IllegalArgumentException("\"crypto.rsa.private-key\" with Base64 encoded value should be in application properties"));
+        String base64EncodedPublicKey = Optional.ofNullable(environment.getProperty("crypto.aes.key"))
+                .orElseThrow(() -> new IllegalArgumentException("\"crypto.aes.key\" with Base64 encoded value should be in application properties"));
+        String base64EncodedPrivateKey = Optional.ofNullable(environment.getProperty("crypto.aes.iv"))
+                .orElseThrow(() -> new IllegalArgumentException("\"crypto.aes.iv\" with Base64 encoded value should be in application properties"));
         return new RestTemplateBuilder()
-                .additionalMessageConverters(new RsaMessageConverter(publicKey(base64EncodedPublicKey), privateKey(base64EncodedPrivateKey)))
+                .additionalMessageConverters(new AesMessageConverter(publicKey(base64EncodedPublicKey), privateKey(base64EncodedPrivateKey)))
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .build();
@@ -75,13 +74,13 @@ public class EncryptionConfiguration implements EnvironmentAware, WebMvcConfigur
 
     @Bean
     @ConditionalOnProperty(prefix = "crypto.rsa", name = {"public-key", "private-key", "uses-client", "uses-server"}, matchIfMissing = true)
-    public PublicKey publicKey(@Value("${crypto.rsa.public-key}") String base64EncodedPublicKey) {
+    public PublicKey publicKey(@Value("${crypto.aes.key}") String base64EncodedPublicKey) {
         return RsaUtils.getPublicKeyFromBase64String(base64EncodedPublicKey);
     }
 
     @Bean
     @ConditionalOnProperty(prefix = "crypto.rsa", name = {"public-key", "private-key", "uses-client", "uses-server"}, matchIfMissing = true)
-    public PrivateKey privateKey(@Value("${crypto.rsa.private-key}") String base64EncodedPrivateKey) {
+    public PrivateKey privateKey(@Value("${crypto.aes.iv}") String base64EncodedPrivateKey) {
         return RsaUtils.getPrivateKeyFromBase64String(base64EncodedPrivateKey);
     }
 
