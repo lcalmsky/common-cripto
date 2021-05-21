@@ -1,5 +1,19 @@
 package io.lcalmsky.common_crypto.util;
 
+import org.apache.tomcat.util.codec.binary.StringUtils;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
+import java.util.Optional;
+
 public class Aes256Utils {
     private static final String ENC_FORMAT = "AES/CBC/PKCS5Padding";
     private byte[] key;
