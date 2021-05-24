@@ -6,15 +6,16 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import io.lcalmsky.common_crypto.converter.AesMessageConverter;
-import io.lcalmsky.common_crypto.exception.EncryptionException;
-import io.lcalmsky.common_crypto.exception.NoEncryptionException;
+import io.lcalmsky.common_crypto.exception.*;
 import io.lcalmsky.common_crypto.util.Aes256Utils;
 import io.lcalmsky.common_crypto.util.RsaUtils;
-import lombok.Data;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -31,16 +32,10 @@ import org.springframework.http.client.ClientHttpRequestExecution;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.client.support.BasicAuthenticationInterceptor;
-import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
-import org.springframework.security.web.authentication.AuthenticationFilter;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.filter.CommonsRequestLoggingFilter;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -124,6 +119,18 @@ public class EncryptionConfiguration implements EnvironmentAware, WebMvcConfigur
             request.getHeaders().set(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
             return execution.execute(request, body);
         }
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "crypto.uses-server", havingValue = "true")
+    public CommonsRequestLoggingFilter requestLoggingFilter() {
+        CommonsRequestLoggingFilter loggingFilter = new CommonsRequestLoggingFilter();
+        loggingFilter.setIncludeClientInfo(true);
+        loggingFilter.setIncludeQueryString(true);
+        loggingFilter.setIncludePayload(true);
+        loggingFilter.setIncludeHeaders(true);
+        loggingFilter.setMaxPayloadLength(500);
+        return loggingFilter;
     }
 
     @Slf4j
@@ -310,53 +317,35 @@ public class EncryptionConfiguration implements EnvironmentAware, WebMvcConfigur
 
     @Component
     @ConditionalOnProperty(name = "crypto.server.basic-auth.enabled", havingValue = "true")
-    @EnableWebSecurity
     @RequiredArgsConstructor
-    public static class WebSecurityConfig extends WebSecurityConfigurerAdapter {
-        private final UserProperties userProperties;
+    public static class BasicAuthFilter extends OncePerRequestFilter {
+
+        private final ClientBasicAuth clientBasicAuth;
 
         @Override
-        protected void configure(HttpSecurity http) throws Exception {
-            http
-                    .csrf().disable()
-                    .authorizeRequests().anyRequest().authenticated()
-                    .and().httpBasic()
-                    .and().addFilterBefore(new AuthenticationContextFilter());
+        protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+            String authorization = Optional.ofNullable(request.getHeader(HttpHeaders.AUTHORIZATION)).orElseThrow(MandatoryHeaderMissingException::thrown);
+            if (!authorization.startsWith("Basic")) throw InvalidHeaderException.thrown();
+            String value = authorization.substring("Basic".length() + 1);
+            String decoded = new String(Base64.getDecoder().decode(value));
+            if (!decoded.contains(":")) throw InvalidHeaderException.thrown();
+            String[] split = decoded.split(":");
+            String user = split[0];
+            Optional.ofNullable(clientBasicAuth.getUsers().get(user))
+                    .filter(value::equals)
+                    .orElseThrow(UnauthorizedException::thrown);
+            filterChain.doFilter(request, response);
         }
+    }
 
-        @Override
-        protected void configure(AuthenticationManagerBuilder auth) throws Exception {
-            auth.userDetailsService(inMemoryUserDetailsManager());
-        }
-
-        @Bean
-        public PasswordEncoder passwordEncoder() {
-            return new PasswordEncoder() {
-                @Override
-                public String encode(CharSequence rawPassword) {
-                    return Base64.getEncoder().encodeToString(rawPassword.toString().getBytes(StandardCharsets.UTF_8));
-                }
-
-                @Override
-                public boolean matches(CharSequence rawPassword, String encodedPassword) {
-                    return encode(rawPassword).equals(encodedPassword);
-                }
-            };
-        }
-
-        @Bean
-        public InMemoryUserDetailsManager inMemoryUserDetailsManager() {
-            Properties props = new Properties();
-            userProperties.getUsers().forEach((key, value) -> props.setProperty(key, String.format("%s,%s,%s", value, "ROLE_USER", "enabled")));
-            return new InMemoryUserDetailsManager(props);
-        }
-
-        @Configuration
-        @EnableConfigurationProperties
-        @ConfigurationProperties(prefix = "crypto.server.basic-auth")
-        @Data
-        public static class UserProperties {
-            private Map<String, String> users = new HashMap<>();
-        }
+    @Configuration
+    @EnableConfigurationProperties
+    @EnableAutoConfiguration
+    @ConfigurationProperties(prefix = "crypto.server.basic-auth")
+    @ConditionalOnProperty(name = "crypto.server.basic-auth.enabled", havingValue = "true")
+    public static class ClientBasicAuth {
+        @Getter
+        @Setter
+        private Map<String, String> users;
     }
 }
